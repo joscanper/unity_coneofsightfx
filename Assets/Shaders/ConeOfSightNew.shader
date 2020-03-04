@@ -65,12 +65,12 @@
 					float4 vpos = float4(i.ray * depth, 1);
 					float4 wpos = mul(unity_CameraToWorld, vpos);
 					float3 opos = mul(unity_WorldToObject, wpos);
-					//opos.y = 0;
+					opos.y = 0;
 					
 					//Discard hit point if it is outside the box
 					clip(float3(0.5, 0.5, 0.5) - abs(opos.xyz));
 
-					wpos.w = 1;
+					//wpos.w = 1;
 					float4 posViewSpace = mul(_ViewSpaceMatrix, wpos);
 					
 					float sightAngleRadians = _SightAngle / 2 * PI / 180;
@@ -85,15 +85,19 @@
 					float angle = acos(fwdDotPos);
 										
 					float angleF = angle / sightAngleRadians;
-					alpha *= step(angleF,1);
+					alpha *= step(angleF, 1);
 
 					//float f = (angle*crossSign + sightAngleRadians) / (_SightAngle * PI / 180);
 					//float sightDepth = SAMPLE_DEPTH_TEXTURE(_ViewDepthTexture, float2(f,1));
 
-					
 					float3 projCoords = posViewSpace.xyz / posViewSpace.w;
 					projCoords = projCoords * 0.5 + 0.5;
-					float3 col = tex2D(_ViewDepthTexture, projCoords.xy).r * 100;//getDepth(posViewSpace);
+					float bias = 0.0001;
+					
+					float obstacleAlpha = (projCoords.z - bias) > (1.0 - tex2D(_ViewDepthTexture, projCoords.xy).r) ? 0 : 1;
+					alpha *= obstacleAlpha;
+
+					float3 col = _Color;
 					return saturate(float4(col, alpha));
 
 					//float3 col * 100;
