@@ -1,7 +1,11 @@
 ﻿Shader "GPUMan/ConeOfSightNew" {
 	Properties{
 		_Color("Color",Color) = (1,1,1,1)
-		_SightAngle("Sight Angle", Range(0.01,90)) = 45
+		_NonVisibleColor("Non Visible Color",Color) = (0,0,0,1)
+		_ViewAngle("Sight Angle", Range(0.01,90)) = 45
+		_AngleStrength("Angle Strength", Float) = 1
+		_NonVisibleIntervals("Non Visible Intervals", Range(0, 1)) = 0.0075
+		_NonVisibleIntervalsStep("Non Visible Intervals Step", Float) = 0.0025
 	}
 
 		Subshader{
@@ -23,7 +27,6 @@
 				struct v2f
 				{
 					float4 pos : SV_POSITION;
-					//float4 uv : TEXCOORD0;
 					float3 ray : TEXCOORD1;
 					float4 screenUV : TEXCOORD2;
 				};
@@ -32,8 +35,12 @@
 				sampler2D_float _CameraDepthTexture;
 
 				float4x4 _ViewSpaceMatrix;
-				float4 _Color;
-				float _SightAngle;
+				half _AngleStrength;
+				half4 _Color;
+				half4 _NonVisibleColor;
+				half _ViewAngle;
+				float _NonVisibleIntervals;
+				float _NonVisibleIntervalsStep;
 
 				v2f vert(appdata_base v)
 				{
@@ -45,17 +52,35 @@
 					return o;
 				}
 
-				float linearizeDepth(float z, float n, float f)
+				float getRadiusAlpha(float distFromCenter)
 				{
-					float c1 = f / n;
-					float c0 = 1.0 - c1;
-					return 1.0 / (c0 * z + c1);
+					float innerCircleAlpha = saturate(1 - (0.05 - distFromCenter) * 50);
+					return max((0.5 - distFromCenter) * 10 * innerCircleAlpha, 0);
+				}
+
+				float getAngleAlpha(float2 pos)
+				{
+					const float PI = 3.14159;
+					float sightAngleRadians = _ViewAngle / 2 * PI / 180;
+					float2 npos = normalize(pos);
+					float fwdDotPos = max(dot(float2(0, 1), npos), 0);
+					float angle = acos(fwdDotPos);
+					float angleF = angle / sightAngleRadians;
+					return 1 - pow(angleF, _AngleStrength);
+				}
+
+				float getObstacleAlpha(float4 worldPos) 
+				{
+					const float BIAS = 0.0001;
+					float4 posViewSpace = mul(_ViewSpaceMatrix, worldPos);
+					float3 projCoords = posViewSpace.xyz / posViewSpace.w;
+					projCoords = projCoords * 0.5 + 0.5;
+					float depthDiff = (projCoords.z - BIAS) - (1.0 - tex2D(_ViewDepthTexture, projCoords.xy).r);
+					return saturate(depthDiff > 0 ? 0 : 1);
 				}
 
 				half4 frag(v2f i) : COLOR
 				{
-					const float PI = 3.14159;
-
 					i.ray = i.ray * (_ProjectionParams.z / i.ray.z);  // farPlane / rayZ ???? what for? normalizing the ray?
 
 					// 3D point reconstruction ----------------
@@ -64,45 +89,26 @@
 					depth = Linear01Depth(depth);
 					float4 vpos = float4(i.ray * depth, 1);
 					float4 wpos = mul(unity_CameraToWorld, vpos);
+
+					//Discard point if is a vertical surface
+					clip(0.1 - dot(normalize(ddy(wpos)), float3(0, 1, 0)));
+
 					float3 opos = mul(unity_WorldToObject, wpos);
 					opos.y = 0;
 					
 					//Discard hit point if it is outside the box
 					clip(float3(0.5, 0.5, 0.5) - abs(opos.xyz));
 
-					//wpos.w = 1;
-					float4 posViewSpace = mul(_ViewSpaceMatrix, wpos);
-					
-					float sightAngleRadians = _SightAngle / 2 * PI / 180;
+					// Alpha calculation
+					float2 pos2D = opos.xz;
+					float distFromCenter = length(pos2D);
+					float obstacleAlpha = getObstacleAlpha(wpos); // 0 if obstacle, 1 if not
+					float alpha = getRadiusAlpha(distFromCenter) * getAngleAlpha(pos2D);
+					float intervals = _NonVisibleIntervals > 0 ? (distFromCenter % _NonVisibleIntervals) : 0;
+					alpha *= step(_NonVisibleIntervalsStep, intervals);// obstacleAlpha == 0 ? : 1;
 
-					float distFromCenter = length(opos.xz);
-					float innerCircleAlpha = saturate(1 - (0.05 - distFromCenter) * 50);
-					float alpha = max((0.5 - length(opos)) * 10 * innerCircleAlpha, 0);
-					
-					float3 npos = normalize(opos);
-					float fwdDotPos = max(dot(float3(0, 0, 1), npos), 0);
-					//float crossSign = sign(dot(float3(0,1,0), cross(float3(0, 0, 1), npos)));
-					float angle = acos(fwdDotPos);
-										
-					float angleF = angle / sightAngleRadians;
-					alpha *= step(angleF, 1);
-
-					//float f = (angle*crossSign + sightAngleRadians) / (_SightAngle * PI / 180);
-					//float sightDepth = SAMPLE_DEPTH_TEXTURE(_ViewDepthTexture, float2(f,1));
-
-					float3 projCoords = posViewSpace.xyz / posViewSpace.w;
-					projCoords = projCoords * 0.5 + 0.5;
-					float bias = 0.0001;
-					
-					float obstacleAlpha = (projCoords.z - bias) > (1.0 - tex2D(_ViewDepthTexture, projCoords.xy).r) ? 0 : 1;
-					alpha *= obstacleAlpha;
-
-					float3 col = _Color;
-					return saturate(float4(col, alpha));
-
-					//float3 col * 100;
-					//return float4(col,1);
-
+					float4 col = lerp(_NonVisibleColor, _Color, obstacleAlpha);
+					return saturate(float4(col.rgb, alpha * col.a));
 				}
 				ENDCG
 			}
