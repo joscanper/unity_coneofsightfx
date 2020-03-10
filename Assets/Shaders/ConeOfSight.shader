@@ -1,93 +1,117 @@
-﻿// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
-
-
-Shader "ShaderPack/ConeOfSight" {
-	Properties {
+﻿Shader "GPUMan/ConeOfSightNew" {
+	Properties{
 		_Color("Color",Color) = (1,1,1,1)
-		_SightAngle("SightAngle",Float) = 0.5
-		_FarHardness("FarHardness",Float) = 0.5
-		_RangeHardness("RangeHardness",Range(0,100)) = 5
-		_RangeStep("RangeStep",Range(0,1)) = 0.7
-		_SourceWhiteness("SourceWhiteness",Range(0,1)) = 1
-		//_SourceGlow("SourceGlow",Range(1,10)) = 1
+		_NonVisibleColor("Non Visible Color",Color) = (0,0,0,1)
+		_ViewAngle("Sight Angle", Range(0.01,90)) = 45
+		_AngleStrength("Angle Strength", Float) = 1
+		_ViewIntervals("Intervals", Range(0, 1)) = 0.0075
+		_ViewIntervalsStep("Intervals Step", Float) = 0.0025
 	}
 
-	SubShader{
-	 	Tags { 
-	 		"Queue"="Transparent"
-	 		"RenderType"="Transparent" 
-	 	} 
-	 	Blend SrcAlpha OneMinusSrcAlpha
-
-		Pass{
-			ZWrite Off
-			CGPROGRAM
-
-			#pragma vertex vert
-			#pragma fragment frag
-
-			#include "UnityCG.cginc"
-
-			struct v2f{
-				float4 position : SV_POSITION;
-				float4 uv : TEXCOORD0;
-			};
-
-			half4 _Color;
-			half _SightAngle;
-			half _FarHardness;
-			half _RangeHardness;
-			half _RangeStep;
-			half _SourceWhiteness;
-			//half _SourceGlow;
-
-			//uniform half _CurrentAngle = 0;
-			//int _BufferSize = 64;
-			uniform float _SightDepthBuffer[256];
-
-			//Vertex
-			v2f vert(appdata_base IN){
-				v2f o;
-				o.position = UnityObjectToClipPos(IN.vertex);
-				o.uv = IN.texcoord;
-				return o;
+		Subshader{
+			Tags 
+			{
+				"RenderType" = "Transparent"
+				
 			}
+			Pass {
+				
+				Blend SrcAlpha OneMinusSrcAlpha
+				ZWrite Off
 
-			//Fragment
-			fixed4 frag(v2f IN) : SV_Target{
-				const float PI = 3.14159;
+				CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				
+				#include "UnityCG.cginc"
 
-				IN.uv.x -= 0.5f;
-				IN.uv.y -= 0.5f;
-				half distcenter = 1-sqrt(IN.uv.x*IN.uv.x + IN.uv.y*IN.uv.y)*2;
+				struct v2f
+				{
+					float4 pos : SV_POSITION;
+					float3 ray : TEXCOORD1;
+					float4 screenUV : TEXCOORD2;
+				};
 
-				half2 fragmentDir = normalize(IN.uv.xy);
-				half viewDotPos = clamp(dot(half2(1,0), fragmentDir),0,1);
-				half sightAngleRads = _SightAngle/2 * PI / 180;
-				half sightVal = cos(sightAngleRads);
+				sampler2D _ViewDepthTexture;
+				sampler2D_float _CameraDepthTexture;
 
-				half4 col = lerp(_Color,half4(1,1,1,1),distcenter*_SourceWhiteness);
-				col.a *= pow(viewDotPos/sightVal,_RangeHardness) *distcenter * pow(distcenter,_FarHardness);
+				float4x4 _ViewSpaceMatrix;
+				half _AngleStrength;
+				half4 _Color;
+				half4 _NonVisibleColor;
+				half _ViewAngle;
+				float _ViewIntervals;
+				float _ViewIntervalsStep;
 
-				//col.a *= clamp(distcenter*abs(pow(col.a,-_FarHardness*10)),0,1);
-				if (viewDotPos<sightVal){
-					col.a *= _RangeStep;
-				}else{
-					// --- Depth check
-					float fragmentAngle = asin(fragmentDir.y)+sightAngleRads;
-					float fragmentVal = 1.0f-(fragmentAngle)/(sightAngleRads*2);
-					int index =  fragmentVal * 256;
-					if (_SightDepthBuffer[index]>0 && (1-distcenter)>_SightDepthBuffer[index])
-						col *= 0;
+				v2f vert(appdata_base v)
+				{
+					v2f o;
+					o.pos = UnityObjectToClipPos(v.vertex);
+					o.ray = UnityObjectToViewPos(v.vertex) * float3(-1, -1, 1);
+					o.screenUV = ComputeScreenPos(o.pos);
+					
+					return o;
 				}
 
-				col.a *= _Color.a;
-				return saturate(col);
+				float getRadiusAlpha(float distFromCenter)
+				{
+					float innerCircleAlpha = saturate(1 - (0.05 - distFromCenter) * 50);
+					return max((0.5 - distFromCenter) * 10 * innerCircleAlpha, 0);
+				}
+
+				float getAngleAlpha(float2 pos)
+				{
+					const float PI = 3.14159;
+					float sightAngleRadians = _ViewAngle / 2 * PI / 180;
+					float2 npos = normalize(pos);
+					float fwdDotPos = max(dot(float2(0, 1), npos), 0);
+					float angle = acos(fwdDotPos);
+					float angleF = angle / sightAngleRadians;
+					return 1 - pow(angleF, _AngleStrength);
+				}
+
+				float getObstacleAlpha(float4 worldPos) 
+				{
+					const float BIAS = 0.0001;
+					float4 posViewSpace = mul(_ViewSpaceMatrix, worldPos);
+					float3 projCoords = posViewSpace.xyz / posViewSpace.w;
+					projCoords = projCoords * 0.5 + 0.5;
+					float depthDiff = (projCoords.z - BIAS) - (1.0 - tex2D(_ViewDepthTexture, projCoords.xy).r);
+					return saturate(depthDiff > 0 ? 0 : 1);
+				}
+
+				half4 frag(v2f i) : COLOR
+				{
+					i.ray = i.ray * (_ProjectionParams.z / i.ray.z);  // farPlane / rayZ ???? what for? normalizing the ray?
+
+					// 3D point reconstruction ----------------
+					float2 uv = i.screenUV.xy / i.screenUV.w;
+					float depth  = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+					depth = Linear01Depth(depth);
+					float4 vpos = float4(i.ray * depth, 1);
+					float4 wpos = mul(unity_CameraToWorld, vpos);
+
+					//Discard point if is a vertical surface
+					clip(0.1 - dot(normalize(ddy(wpos)), float3(0, 1, 0)));
+
+					float3 opos = mul(unity_WorldToObject, wpos);
+					opos.y = 0;
+					
+					//Discard hit point if it is outside the box
+					clip(float3(0.5, 0.5, 0.5) - abs(opos.xyz));
+
+					// Alpha calculation
+					float2 pos2D = opos.xz;
+					float distFromCenter = length(pos2D);
+					float obstacleAlpha = getObstacleAlpha(wpos); // 0 if obstacle, 1 if not
+					float alpha = getRadiusAlpha(distFromCenter) * getAngleAlpha(pos2D);
+					float intervals = _ViewIntervals > 0 ? (distFromCenter % _ViewIntervals) : 0;
+					alpha *= step(_ViewIntervalsStep, intervals);// obstacleAlpha == 0 ? : 1;
+
+					float4 col = lerp(_NonVisibleColor, _Color, obstacleAlpha);
+					return saturate(float4(col.rgb, alpha * col.a));
+				}
+				ENDCG
 			}
-
-			ENDCG
-		}
 	}
-
 }
-
