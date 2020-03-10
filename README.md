@@ -5,7 +5,7 @@ This effect is also present in other games such as Desperados, Shadow Tactics or
 
 It is implemented using a secondary camera depth texture instead of raycasting. This camera is attached to the soldier, which allows the effect to be accurate in terms of what the character could actually see.
 
-The cone angle can be tweaked on the ConeOfSightRenderer component (existing in the soldier hierarchy).
+The cone angle can be tweaked on the ConeOfSightRenderer component (which is on the ConeOfSight object, in the Soldier prefab).
 
 The shader works like a deferred decal so this effect would work with different terrain heights if the cube (rendered by ConeOfSight) is tall enough.
 
