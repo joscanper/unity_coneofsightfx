@@ -14,13 +14,16 @@ public class ConeOfSightRenderer : MonoBehaviour
     void Start()
     {
         MeshRenderer renderer = GetComponent<MeshRenderer>();
+        mMaterial = renderer.material;  // This generates a copy of the material
+        renderer.material = mMaterial;
         /*
         
         mMaterial = new Material(renderer.material);
         renderer.material = mMaterial;
+        mMaterial = renderer.sharedMaterial;
         */
 
-        mMaterial = renderer.sharedMaterial;
+
 
         RenderTexture colorTexture = new RenderTexture(ViewCamera.pixelWidth, ViewCamera.pixelHeight, 0, RenderTextureFormat.ARGB32);
         RenderTexture depthTexture = new RenderTexture(ViewCamera.pixelWidth, ViewCamera.pixelHeight, 32, RenderTextureFormat.Depth);

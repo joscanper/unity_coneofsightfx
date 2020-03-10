@@ -4,8 +4,8 @@
 		_NonVisibleColor("Non Visible Color",Color) = (0,0,0,1)
 		_ViewAngle("Sight Angle", Range(0.01,90)) = 45
 		_AngleStrength("Angle Strength", Float) = 1
-		_NonVisibleIntervals("Non Visible Intervals", Range(0, 1)) = 0.0075
-		_NonVisibleIntervalsStep("Non Visible Intervals Step", Float) = 0.0025
+		_ViewIntervals("Intervals", Range(0, 1)) = 0.0075
+		_ViewIntervalsStep("Intervals Step", Float) = 0.0025
 	}
 
 		Subshader{
@@ -17,6 +17,7 @@
 			Pass {
 				
 				Blend SrcAlpha OneMinusSrcAlpha
+				ZWrite Off
 
 				CGPROGRAM
 				#pragma vertex vert
@@ -39,8 +40,8 @@
 				half4 _Color;
 				half4 _NonVisibleColor;
 				half _ViewAngle;
-				float _NonVisibleIntervals;
-				float _NonVisibleIntervalsStep;
+				float _ViewIntervals;
+				float _ViewIntervalsStep;
 
 				v2f vert(appdata_base v)
 				{
@@ -104,8 +105,8 @@
 					float distFromCenter = length(pos2D);
 					float obstacleAlpha = getObstacleAlpha(wpos); // 0 if obstacle, 1 if not
 					float alpha = getRadiusAlpha(distFromCenter) * getAngleAlpha(pos2D);
-					float intervals = _NonVisibleIntervals > 0 ? (distFromCenter % _NonVisibleIntervals) : 0;
-					alpha *= step(_NonVisibleIntervalsStep, intervals);// obstacleAlpha == 0 ? : 1;
+					float intervals = _ViewIntervals > 0 ? (distFromCenter % _ViewIntervals) : 0;
+					alpha *= step(_ViewIntervalsStep, intervals);// obstacleAlpha == 0 ? : 1;
 
 					float4 col = lerp(_NonVisibleColor, _Color, obstacleAlpha);
 					return saturate(float4(col.rgb, alpha * col.a));
