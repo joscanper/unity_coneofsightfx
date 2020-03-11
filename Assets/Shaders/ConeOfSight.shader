@@ -11,7 +11,7 @@
 		Subshader{
 			Tags 
 			{
-				"RenderType" = "Transparent"
+				"Queue" = "Transparent"
 				
 			}
 			Pass {
@@ -47,7 +47,7 @@
 				{
 					v2f o;
 					o.pos = UnityObjectToClipPos(v.vertex);
-					o.ray = UnityObjectToViewPos(v.vertex) * float3(-1, -1, 1);
+					o.ray = UnityObjectToViewPos(v.vertex) * float3(1, 1, -1);
 					o.screenUV = ComputeScreenPos(o.pos);
 					
 					return o;
@@ -85,14 +85,13 @@
 					i.ray = i.ray * (_ProjectionParams.z / i.ray.z);  // farPlane / rayZ ???? what for? normalizing the ray?
 
 					// 3D point reconstruction ----------------
-					float2 uv = i.screenUV.xy / i.screenUV.w;
-					float depth  = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+					float depth  = SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, i.screenUV);
 					depth = Linear01Depth(depth);
 					float4 vpos = float4(i.ray * depth, 1);
 					float4 wpos = mul(unity_CameraToWorld, vpos);
 
 					//Discard point if is a vertical surface
-					clip(0.1 - dot(normalize(ddy(wpos)), float3(0, 1, 0)));
+					clip((dot(normalize(ddy(wpos)), float3(0, 1, 0)) > 0.45) ? -1 : 1);
 
 					float3 opos = mul(unity_WorldToObject, wpos);
 					opos.y = 0;
