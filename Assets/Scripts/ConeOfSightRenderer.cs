@@ -16,21 +16,12 @@ public class ConeOfSightRenderer : MonoBehaviour
         MeshRenderer renderer = GetComponent<MeshRenderer>();
         mMaterial = renderer.material;  // This generates a copy of the material
         renderer.material = mMaterial;
-        /*
         
-        mMaterial = new Material(renderer.material);
-        renderer.material = mMaterial;
-        mMaterial = renderer.sharedMaterial;
-        */
-
-
-
-        RenderTexture colorTexture = new RenderTexture(ViewCamera.pixelWidth, ViewCamera.pixelHeight, 0, RenderTextureFormat.ARGB32);
         RenderTexture depthTexture = new RenderTexture(ViewCamera.pixelWidth, ViewCamera.pixelHeight, 32, RenderTextureFormat.Depth);
-        
+
         ViewCamera.depthTextureMode = DepthTextureMode.Depth;
         ViewCamera.farClipPlane = ViewDistance;
-        ViewCamera.SetTargetBuffers(colorTexture.colorBuffer, depthTexture.depthBuffer);
+        ViewCamera.SetTargetBuffers(depthTexture.colorBuffer, depthTexture.depthBuffer);
         ViewCamera.fieldOfView = ViewAngle;
 
         transform.localScale = new Vector3(ViewDistance, transform.localScale.y, ViewDistance);
