@@ -24,7 +24,7 @@ public class ConeOfSightRenderer : MonoBehaviour
         ViewCamera.SetTargetBuffers(depthTexture.colorBuffer, depthTexture.depthBuffer);
         ViewCamera.fieldOfView = ViewAngle;
 
-        transform.localScale = new Vector3(ViewDistance, transform.localScale.y, ViewDistance);
+        transform.localScale = new Vector3(ViewDistance * 2, transform.localScale.y, ViewDistance *2);
 
         mMaterial.SetTexture(sViewDepthTexturedID, depthTexture);
         mMaterial.SetFloat("_ViewAngle", ViewAngle);
