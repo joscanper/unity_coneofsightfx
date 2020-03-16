@@ -6,23 +6,23 @@
 		_AngleStrength("Angle Strength", Float) = 1
 		_ViewIntervals("Intervals", Range(0, 1)) = 0.0075
 		_ViewIntervalsStep("Intervals Step", Float) = 0.0025
+		_InnerCircleSize("InnerCircleSize", Range(0, 1)) = 0.05
+		_CircleStrength("CircleStrength", Float) = 70
 	}
 
 		Subshader{
-			Tags 
+			Tags
 			{
 				"Queue" = "Transparent"
-				
 			}
 			Pass {
-				
 				Blend SrcAlpha OneMinusSrcAlpha
 				ZWrite Off
 
 				CGPROGRAM
 				#pragma vertex vert
 				#pragma fragment frag
-				
+
 				#include "UnityCG.cginc"
 
 				struct v2f
@@ -42,21 +42,25 @@
 				half _ViewAngle;
 				float _ViewIntervals;
 				float _ViewIntervalsStep;
+				half _InnerCircleSize;
+				half _CircleStrength;
 
 				v2f vert(appdata_base v)
 				{
 					v2f o;
 					o.pos = UnityObjectToClipPos(v.vertex);
+
 					o.ray = UnityObjectToViewPos(v.vertex) * float3(1, 1, -1);
+
 					o.screenUV = ComputeScreenPos(o.pos);
-					
+
 					return o;
 				}
 
 				float getRadiusAlpha(float distFromCenter)
 				{
-					float innerCircleAlpha = saturate(1 - (0.05 - distFromCenter) * 50);
-					return max((0.5 - distFromCenter) * 10 * innerCircleAlpha, 0);
+					float innerCircleAlpha = saturate(distFromCenter - _InnerCircleSize);
+					return max((0.5 - distFromCenter) * innerCircleAlpha  * _CircleStrength, 0);
 				}
 
 				float getAngleAlpha(float2 pos)
@@ -67,10 +71,10 @@
 					float fwdDotPos = max(dot(float2(0, 1), npos), 0);
 					float angle = acos(fwdDotPos);
 					float angleF = angle / sightAngleRadians;
-					return 1 - pow(angleF, _AngleStrength);
+					return max(1.0 - pow(angleF, _AngleStrength), 0);
 				}
 
-				float getObstacleAlpha(float4 worldPos) 
+				float getObstacleAlpha(float4 worldPos)
 				{
 					const float BIAS = 0.0001;
 					float4 posViewSpace = mul(_ViewSpaceMatrix, worldPos);
@@ -86,7 +90,7 @@
 					i.ray = i.ray * (_ProjectionParams.z / i.ray.z);  // farPlane / rayZ
 
 					// 3D point reconstruction from depth texture
-					float depth  = SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, i.screenUV);
+					float depth = SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, i.screenUV);
 					depth = Linear01Depth(depth);
 					float4 vpos = float4(i.ray * depth, 1);
 					float4 wpos = mul(unity_CameraToWorld, vpos);
@@ -96,7 +100,7 @@
 
 					float3 opos = mul(unity_WorldToObject, wpos);
 					opos.y = 0;
-					
+
 					// Discard hit point if it is outside the box
 					clip(float3(0.5, 0.5, 0.5) - abs(opos.xyz));
 
@@ -110,7 +114,7 @@
 					float intervals = _ViewIntervals > 0 ? (distFromCenter % _ViewIntervals) : 0;
 					alpha *= step(_ViewIntervalsStep, intervals);
 
-					float4 col = obstacleAlpha > 0 ? _Color : _NonVisibleColor; 
+					float4 col = obstacleAlpha > 0 ? _Color : _NonVisibleColor;
 					return saturate(float4(col.rgb, alpha * col.a));
 				}
 				ENDCG
